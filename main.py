@@ -2,23 +2,27 @@ from bs4 import BeautifulSoup, NavigableString
 import requests
 import pandas as pd
 from io import StringIO
-import numpy as np
 import os
-import time
 
+# Required indicators
+columns = ['Капитализация, млрд руб','Выручка, млрд руб', 'Чистый операц доход, млрд руб', 'EBITDA, млрд руб', 'Долг, млрд руб', 'Наличность, млрд руб', 'Чистая рентаб, %', 'ROE, %', 'ROA, %', 'P/E', 'EV/EBITDA', 'EPS, руб', 'P/BV', 'P/B', 'P/S', 'Чистый долг, млрд руб', 'Активы, млрд руб', 'Дост. общ капитала, %', 'Див доход, ао, %']
+
+# Returns row index of given name from table
 def return_row_index(table, name:str):
     try:
         return table['Unnamed: 0'].to_list().index(name)
     except:
         return None
 
+# Returns indexes of all given rows
 def fill_indexes(table, columns:list):
     indexes = []
-    for i, column in enumerate(columns):
+    for column in columns:
         temp = return_row_index(table, column)
         indexes.append(temp)
     return indexes
 
+# Returns amount of not nan values in list
 def length_without_nan(values:list):
     count = 0
     for value in values[1:]:
@@ -26,6 +30,7 @@ def length_without_nan(values:list):
             count += 1
     return count
 
+# Calculates linear regression value
 def linear_regression(values:list):
     n = length_without_nan(values)
     x = list(val for val in range(1,n+1))
@@ -39,9 +44,11 @@ def linear_regression(values:list):
         return 
     return m
 
-def find_median(values: list):
+# Calculates average value
+def find_average(values: list):
     return sum(float(val.replace(' ', '').replace('%','')) for val in values[1:] if not pd.isna(val))/len(values)
 
+# Returns the result of the analysis
 def get_verdict(m: float, median: float):
     if m == None or median == None:
         return
@@ -52,7 +59,7 @@ def get_verdict(m: float, median: float):
     else:
         return 'Рост' if m > 0 else 'Снижение'
 
-
+# Prints indicators of a company
 def print_data(table: pd.DataFrame, indexes:list, columns:list, number_of_years: int):
     temp = []
     for i, index in enumerate(indexes):
@@ -82,7 +89,7 @@ def print_data(table: pd.DataFrame, indexes:list, columns:list, number_of_years:
             for item in val[1:]:
                 if not pd.isna(item):
                     print('{:8s}'.format(item), end=' | ')
-            print(get_verdict(linear_regression(val), find_median(val)))
+            print(get_verdict(linear_regression(val), find_average(val)))
             print('-'*157)
         elif val[0] == columns[15]:
             net_debt = [val[-j] for j in range(1,4)]
@@ -106,37 +113,8 @@ def print_data(table: pd.DataFrame, indexes:list, columns:list, number_of_years:
                     break
             print(f'{val[0]:25}:   {val[actual_data]}')
             print('-'*157)
-        
-    
 
-sectors = ['НЕФТЕГАЗ', 'БАНКИ', 'МЕТАЛЛУРГИЯ', 'Э Генерация', 'Ритейл', 'Телеком', 'Транспорт', 'Строители', 'Машиностроение', 'Третий эшелон', 'Непубличные', 'ЭЛЕКТРОСЕТИ', 'ЭНЕРГОСБЫТ', 'РИТЕЙЛ', 'ПОТРЕБ', 'ТЕЛЕКОМ', 'ИНТЕРНЕТ', 'HIGH TECH', 'МЕДИА', 'ТРАНСПОРТ', 'СТРОИТЕЛИ', 'МАШИНОСТРОЕНИЕ', 'ТРЕТИЙ ЭШЕЛОН', 'НЕПУБЛИЧНЫЕ', 'ДРУГОЕ', 'Financials', 'Utilities', 'Consumer Discretionary', 'Consumer Staples', 'Energy', 'Healthcare', 'Industrials', 'Technology', 'Telecom', 'Materials', 'Real Estate', 'Consumer Cyclical', 'Communication Services', 'Other', 'ETF']
-columns = ['Капитализация, млрд руб','Выручка, млрд руб', 'Чистый операц доход, млрд руб', 'EBITDA, млрд руб', 'Долг, млрд руб', 'Наличность, млрд руб', 'Чистая рентаб, %', 'ROE, %', 'ROA, %', 'P/E', 'EV/EBITDA', 'EPS, руб', 'P/BV', 'P/B', 'P/S', 'Чистый долг, млрд руб', 'Активы, млрд руб', 'Дост. общ капитала, %', 'Див доход, ао, %']
-
-def main_func():
-    sectors_dict = fill_sectors_dict()
-    for key, value in sectors_dict.items():
-        print("\n----- Сектор: "+ key+' -----')
-        main = requests.get("https://smart-lab.ru/q/shares_fundamental/?sector_id%5B%5D="+str(value), headers={'User-Agent': 'Custom'})
-        soup = BeautifulSoup(main.text, 'lxml')
-        try:
-            table = soup.find('table', class_='simple-little-table').children
-        except:
-            print("Нет таблицы!")
-            continue
-        for j, child in enumerate(table):
-            if j > 11:
-                break
-            if (child != None) and (child != '\n') and (j != 1):
-                name = child.find('a').text
-                chart_icon = child.find('a', class_='charticon2')
-                company_html = requests.get("https://smart-lab.ru"+chart_icon["href"]+"MSFO/download", headers={'User-Agent': 'Custom'})
-                company_csv = pd.read_csv(StringIO(company_html.content.decode('utf-8')), sep=';', on_bad_lines='skip')
-                indexes = fill_indexes(company_csv, columns)
-                print(name)
-                print_data(company_csv, indexes, columns)
-                print(end='\n\n')
-        wait = input("Нажмите Enter для следующей отрасли...")
-
+# Returns dict with all sectors on website
 def fill_sectors_dict():         
     main = requests.get("https://smart-lab.ru/q/shares_fundamental/", headers={'User-Agent': 'Custom'})
     soup = BeautifulSoup(main.text, 'lxml')
@@ -148,6 +126,7 @@ def fill_sectors_dict():
         sectors_dict[child.text] = child.get("value")
     return sectors_dict
 
+# User interaction interface
 def interface(sectors_dict: dict):
     while 1:
         os.system("clear")
@@ -176,8 +155,8 @@ def interface(sectors_dict: dict):
         os.system("clear")
         print_sector(sectors_list[choice-1], sectors_dict[sectors_list[choice-1]])
 
+# Print companies from given sector
 def print_sector(sector, index):
-    
     main = requests.get("https://smart-lab.ru/q/shares_fundamental/?sector_id%5B%5D="+str(index), headers={'User-Agent': 'Custom'})
     soup = BeautifulSoup(main.text, 'lxml')
     try:
@@ -201,6 +180,6 @@ def print_sector(sector, index):
             if wait == 'q':
                 break
 
-
-sectors_dict = fill_sectors_dict()
-interface(sectors_dict)
+if __name__ == "__main__":
+    sectors_dict = fill_sectors_dict()
+    interface(sectors_dict)
